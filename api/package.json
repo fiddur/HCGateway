@@ -2,27 +2,34 @@
   "name": "hcgateway-api",
   "packageManager": "pnpm@10.0.0-alpha.0",
   "version": "1.0.0",
-  "main": "api.js",
+  "main": "src/api.js",
   "license": "MIT",
   "engines": {
     "node": "~22"
   },
-  "scripts": {},
+  "scripts": {
+    "fix": "eslint --fix",
+    "start": "tsx src/api.ts",
+    "lint": "eslint"
+  },
   "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@types/eslint": "^9.6.1",
     "@types/node": "^22",
     "@types/pg": "^8.11.10",
     "@types/pg-format": "^1.0.5",
     "@typescript-eslint/eslint-plugin": "^8.12.2",
     "@typescript-eslint/parser": "^8.12.2",
     "eslint": "^9.13.0",
-    "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-sort-keys": "^2.3.5",
+    "globals": "^15.11.0",
     "prettier": "^3.3.3",
     "prettier-plugin-organize-imports": "^4.1.0",
     "react-native-health-connect": "^3.2.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.12.2"
   },
   "dependencies": {
     "body-parser": "^1.20.3",
