@@ -1,11 +1,13 @@
 HCGateway API
 =============
 
-Backend is completely remade in this fork of [HCGateway](https://github.com/CoolCoderSJ/HCGateway).
+Backend is completely remade in this fork.  Original was python API
+read/write server in
+[HCGateway](https://github.com/CoolCoderSJ/HCGateway).
 
-This backend will use a PostgreSQL server for authentication, creating
-a new database per user that they then may access with their
-credentials.
+This backend (in TypeScript) will use a PostgreSQL server for
+authentication, creating a new database per user that they then may
+access with their credentials.
 
 This allows using the data in [Looker
 Studio](https://lookerstudio.google.com/), or any other visualization
