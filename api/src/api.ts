@@ -6,9 +6,18 @@ import polka from 'polka'
 import {
   ActiveCaloriesBurnedRecord,
   BasalMetabolicRateRecord,
+  BodyFatRecord,
+  BoneMassRecord,
+  DistanceRecord,
   HealthConnectRecordResult,
 } from 'react-native-health-connect'
-import { EnergyResult } from 'react-native-health-connect/lib/typescript/types/base.types'
+import {
+  EnergyResult,
+  InstantaneousRecord,
+  IntervalRecord,
+  LengthResult,
+  MassResult,
+} from 'react-native-health-connect/lib/typescript/types/base.types'
 
 // Since react-native-health-connect doesn't export the result types, we need to recreate them :(
 type Identity<T> = { [P in keyof T]: T[P] }
@@ -28,23 +37,58 @@ const query = async (db: Client, queryStr: string, params?: any[]) => {
   return result
 }
 
+const energyType = {
+  inCalories: 'FLOAT8',
+  inJoules: 'FLOAT8',
+  inKilocalories: 'FLOAT8',
+  inKilojoules: 'FLOAT8',
+}
+const energyTranform = (energy: EnergyResult) => ({
+  inCalories: energy.inCalories,
+  inJoules: energy.inJoules,
+  inKilocalories: energy.inKilocalories,
+  inKilojoules: energy.inKilojoules,
+})
+const intervalType = { endTime: 'TIMESTAMP', startTime: 'TIMESTAMP' }
+const intervalTransform = (item: IntervalRecord) => ({ endTime: item.endTime, startTime: item.startTime })
+const instantType = { time: 'TIMESTAMP' }
+const instantTransform = (item: InstantaneousRecord) => ({ time: item.time })
+const lengthType = {
+  inMeters: 'FLOAT8',
+  inKilometers: 'FLOAT8',
+  inMiles: 'FLOAT8',
+  inInches: 'FLOAT8',
+  inFeet: 'FLOAT8',
+}
+const lengthTransform = (length: LengthResult) => ({
+  inMeters: length.inMeters,
+  inKilometers: length.inKilometers,
+  inMiles: length.inMiles,
+  inInches: length.inInches,
+  inFeet: length.inFeet,
+})
+const massType = {
+  inGrams: 'FLOAT8',
+  inKilograms: 'FLOAT8',
+  inMilligrams: 'FLOAT8',
+  inMicrograms: 'FLOAT8',
+  inOunces: 'FLOAT8',
+  inPounds: 'FLOAT8',
+}
+const massTransform = (mass: MassResult) => ({
+  inGrams: mass.inGrams,
+  inKilograms: mass.inKilograms,
+  inMilligrams: mass.inMilligrams,
+  inMicrograms: mass.inMicrograms,
+  inOunces: mass.inOunces,
+  inPounds: mass.inPounds,
+})
 const recordTypes = {
   ActiveCaloriesBurned: {
-    fields: {
-      endTime: 'TIMESTAMP',
-      inCalories: 'FLOAT8',
-      inJoules: 'FLOAT8',
-      inKilocalories: 'FLOAT8',
-      inKilojoules: 'FLOAT8',
-      startTime: 'TIMESTAMP',
-    },
+    fields: { ...intervalType, ...energyType },
     transform: (item: Replace<ActiveCaloriesBurnedRecord, 'energy', EnergyResult>) => ({
-      endTime: item.endTime,
-      inCalories: item.energy.inCalories,
-      inJoules: item.energy.inJoules,
-      inKilocalories: item.energy.inKilocalories,
-      inKilojoules: item.energy.inKilojoules,
-      startTime: item.startTime,
+      ...intervalTransform(item),
+      ...energyTranform(item.energy),
     }),
   },
   //   'BasalBodyTemperature',
@@ -52,9 +96,9 @@ const recordTypes = {
   //   'BloodPressure',
   BasalMetabolicRate: {
     fields: {
+      ...instantType,
       inKilocaloriesPerDay: 'FLOAT8',
       inWatts: 'FLOAT8',
-      time: 'TIMESTAMP',
     },
     transform: (
       item: Replace<
@@ -68,16 +112,31 @@ const recordTypes = {
     ) => ({
       inKilocaloriesPerDay: item.basalMetabolicRate.inKilocaloriesPerDay,
       inWatts: item.basalMetabolicRate.inWatts,
-      time: item.time,
+      ...instantTransform(item),
     }),
   },
-  //   'BodyFat',
+  BodyFat: {
+    fields: { ...instantType, percentage: 'FLOAT8' },
+    transform: (item: BodyFatRecord) => ({ percentage: item.percentage, time: item.time }),
+  },
   //   'BodyTemperature',
-  //   'BoneMass',
+  BoneMass: {
+    fields: { ...instantType, ...massType },
+    transform: (item: Replace<BoneMassRecord, 'mass', MassResult>) => ({
+      ...instantTransform(item),
+      ...massTransform(item.mass),
+    }),
+  },
   //   'CyclingPedalingCadence',
   //   'CervicalMucus',
   //   'ExerciseSession',
-  //   'Distance',
+  Distance: {
+    fields: { ...intervalType, ...lengthType },
+    transform: (item: Replace<DistanceRecord, 'distance', LengthResult>) => ({
+      ...intervalTransform(item),
+      ...lengthTransform(item.distance),
+    }),
+  },
   //   'ElevationGained',
   //   'FloorsClimbed',
   //   'HeartRate',
@@ -197,7 +256,10 @@ const main = async () => {
     const { userid: sessid, data } = req.body
     if (!data?.length) return res.end('{"success":true}')
 
-    if (!(recordType in recordTypes)) throw new Error(`NOT IMPLEMENTED: ${recordType}`)
+    if (!(recordType in recordTypes)) {
+      console.warn(recordType, data[0])
+      throw new Error(`NOT IMPLEMENTED: ${recordType}`)
+    }
 
     const username = getUsernameFromSession(sessid)
     const database = userDbName(username)
