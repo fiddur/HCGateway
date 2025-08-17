@@ -3,57 +3,6 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import { Client } from 'pg'
 import format from 'pg-format'
 import polka from 'polka'
-import { EnergyResult } from 'react-native-health-connect'
-
-const recordTypes = {
-  'ActiveCaloriesBurned': {
-    fields: {
-      inCalories: 'FLOAT8',
-      inJoules: 'FLOAT8',
-      inKilocalories: 'FLOAT8',
-      inKilojoules: 'FLOAT8',
-    },
-    transform: (item: RecordItem) => ({
-      inCalories:  'FLOAT8',
-      inJoules: 'FLOAT8',
-      inKilocalories: 'FLOAT8',
-      inKilojoules: 'FLOAT8',
-    })
-  },
-  //   'BasalBodyTemperature',
-  //   'BloodGlucose',
-  //   'BloodPressure',
-  //   'BasalMetabolicRate',
-  //   'BodyFat',
-  //   'BodyTemperature',
-  //   'BoneMass',
-  //   'CyclingPedalingCadence',
-  //   'CervicalMucus',
-  //   'ExerciseSession',
-  //   'Distance',
-  //   'ElevationGained',
-  //   'FloorsClimbed',
-  //   'HeartRate',
-  //   'Height',
-  //   'Hydration',
-  //   'LeanBodyMass',
-  //   'MenstruationFlow',
-  //   'MenstruationPeriod',
-  //   'Nutrition',
-  //   'OvulationTest',
-  //   'OxygenSaturation',
-  //   'Power',
-  //   'RespiratoryRate',
-  //   'RestingHeartRate',
-  //   'SleepSession',
-  //   'Speed',
-  //   'Steps',
-  //   'StepsCadence',
-  //   'TotalCaloriesBurned',
-  //   'Vo2Max',
-  //   'Weight',
-  //   'WheelchairPushes',
-}
 
 const formatValue = (v: unknown): string =>
   Array.isArray(v)
@@ -67,29 +16,6 @@ const formatValue = (v: unknown): string =>
           : typeof v === 'string'
             ? `'${(v as string).replaceAll("'", "''")}'`
             : `'${JSON.stringify(v).replaceAll("'", "''")}'`
-
-type RecordItem = {
-  metadata: {
-    id: string
-    dataOrigin: string
-  }
-  time?: string
-  startTime?: string
-  endTime?: string
-  energy?: EnergyResult
-  [k: string]: string | number
-}
-
-const baseFields = {
-  id: 'VARCHAR PRIMARY KEY',
-  time: 'TIMESTAMP',
-  startTime: 'TIMESTAMP',
-  endTime: 'TIMESTAMP',
-  metadata: 'JSONB',
-  app: 'VARCHAR',
-}
-  
-const fieldsByType = (recordType: keyof typeof recordTypes) => ({ ...baseFields, ...recordTypes[recordType].fields })
 
 const main = async () => {
   const config = {
@@ -171,10 +97,12 @@ const main = async () => {
 
   httpd.post('/api/sync/:recordType', async (req, res, next) => {
     const { recordType } = req.params
+    console.log(`Syncing ${recordType}`)
     const { userid: sessid, data } = req.body
-    if (!data?.length) return res.end('{"success":true}')
-
-    if (!(recordType in recordTypes)) throw new Error('NOT IMPLEMENTED')
+    if (!data?.length) {
+      console.log('  empty')
+      return res.end('{"success":true}')
+    }
 
     const username = getUsernameFromSession(sessid)
     const database = userDbName(username)
@@ -182,38 +110,38 @@ const main = async () => {
 
     const tableExists = await db.query(
       `SELECT 1 FROM information_schema.tables
-         WHERE table_catalog = '${database}' AND table_name = '${recordType}'`,
+         WHERE table_catalog = '${database}' AND table_name = 'hcdata'`,
     )
 
     console.log(tableExists)
 
     if (tableExists.rowCount === 0) {
-      console.log(`CREATE TABLE "${recordType}" (
-        id        VARCHAR PRIMARY KEY,
-        metadata  JSONB,
-        app       VARCHAR,
-        time      TIMESTAMP,
-        "startTime" TIMESTAMP,
-        "endTime"   TIMESTAMP,
-        ${Object.entries(recordTypes[recordType].fields).map(([k,v]) => `"${k}" ${v}`).join(' , ')}
+      console.log(`CREATE TABLE "hcdata" (
+        id           VARCHAR PRIMARY KEY,
+        "recordType" VARCHAR,
+        metadata     JSONB,
+        app          VARCHAR,
+        time         TIMESTAMP,
+        "startTime"  TIMESTAMP,
+        "endTime"    TIMESTAMP,
+        data         JSONB
       )`)
 
       console.log(data[0])
-      throw new Error('stop')
 
-
-      await db.query(`CREATE TABLE "${recordType}" (
-        id        VARCHAR PRIMARY KEY,
-        metadata  JSONB,
-        app       VARCHAR,
-        time      TIMESTAMP,
-        "startTime" TIMESTAMP,
-        "endTime"   TIMESTAMP,
-        ${Object.entries(recordTypes[recordType].fields).map(([k,v]) => `"${k}" ${v}`).join(' , ')}
+      await db.query(`CREATE TABLE "hcdata" (
+        id           VARCHAR PRIMARY KEY,
+        "recordType" VARCHAR,
+        metadata     JSONB,
+        app          VARCHAR,
+        time         TIMESTAMP,
+        "startTime"  TIMESTAMP,
+        "endTime"    TIMESTAMP,
+        data         JSONB
       )`)
     }
 
-    throw new Error('stop')
+    //throw new Error('stop')
 
     console.log(recordType, req.body)
 
@@ -221,11 +149,18 @@ const main = async () => {
       console.log(item)
       const id = item.metadata.id
       const { metadata, time, startTime, endTime, ...dataObj } = item
-      const dataTuples = Object.entries({ id, metadata, time, startTime, endTime, data: dataObj }).filter(
-        ([k, v]) => !!v,
-      )
-      console.log(`
-        INSERT INTO "${recordType}"
+      const dataTuples = Object.entries({
+        id,
+        recordType,
+        metadata,
+        time,
+        startTime,
+        endTime,
+        data: dataObj,
+      }).filter(([_, v]) => !!v)
+
+      const sql = `
+        INSERT INTO "hcdata"
           (${dataTuples.map(([k]) => `"${k}"`).join(',')})
          VALUES(${dataTuples
            .map(([, v]) => v)
@@ -236,20 +171,10 @@ const main = async () => {
              .filter(([k]) => k !== 'id')
              .map(([k, v]) => `"${k}" = ${formatValue(v)}`)
              .join(' , ')}
-        `)
-      await db.query(`
-        INSERT INTO "${recordType}"
-          (${dataTuples.map(([k]) => `"${k}"`).join(',')})
-         VALUES(${dataTuples
-           .map(([, v]) => v)
-           .map(formatValue)
-           .join(',')})
-         ON CONFLICT (id) DO UPDATE SET
-           ${dataTuples
-             .filter(([k]) => k !== 'id')
-             .map(([k, v]) => `"${k}" = ${formatValue(v)}`)
-             .join(' , ')}
-        `)
+        `
+
+      console.log(sql)
+      await db.query(sql)
     }
 
     res.end('{"success":true}')
